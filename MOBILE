@@ -800,6 +800,7 @@ do
     if type(merged.carpetSpeedValue) == "number" then _G.MeerkoCarpetSpeedValue = merged.carpetSpeedValue end
     if type(merged.exX) == "number" then _G._meerko_exX = merged.exX end
     if type(merged.exY) == "number" then _G._meerko_exY = merged.exY end
+    _G.DIPXSharedUsersEnabled = true
     if type(merged.fX)  == "number" then _G._meerko_fX  = merged.fX  end
     if type(merged.fY)  == "number" then _G._meerko_fY  = merged.fY  end
     if type(merged.kX)  == "number" then _G._meerko_kX  = merged.kX  end
@@ -6973,6 +6974,7 @@ do
         t.autoBuyRange = tonumber(_G.MeerkoAutoBuyRange) or 17
         t.autoBuyHover = tonumber(_G.MeerkoAutoBuyHover) or 9
         t.exX = tonumber(_G._meerko_exX); t.exY = tonumber(_G._meerko_exY)
+        t.dipxSharedUsers = true
         t.fX  = tonumber(_G._meerko_fX);  t.fY  = tonumber(_G._meerko_fY)
         t.kX  = tonumber(_G._meerko_kX);  t.kY  = tonumber(_G._meerko_kY)
         t.tgtX = tonumber(_G._meerko_tgtX); t.tgtY = tonumber(_G._meerko_tgtY)
@@ -10899,4 +10901,152 @@ do
     host.ChildAdded:Connect(function(g)
         if isOurGui(g) then task.defer(function() setupGui(g) end) end
     end)
+end-- DIPX SHARED USERS
+-- Requires the DIPX Presence Worker + KV binding named DIPX_KV.
+do
+    local _DIPX_PRESENCE_API = "https://empty-bush-a1ef.ahmedhabazisid.workers.dev"
+    local _DIPX_SHARED_ENABLED = true
+    local _DIPX_HEARTBEAT = 8
+    local _DIPX_TIMEOUT = 22
+    local _DIPX_LABELS = {}
+    local _DIPX_RUNNING = true
+
+    local _DIPX_HttpService = game:GetService("HttpService")
+    local _DIPX_Players = game:GetService("Players")
+    local _DIPX_LocalPlayer = _DIPX_Players.LocalPlayer
+
+    local function _dipxRequest(method, url, body)
+        local fn = request or http_request or (syn and syn.request)
+        if type(fn) ~= "function" then return nil, "HTTP request function unavailable" end
+        local ok, res = pcall(fn, {
+            Url = url,
+            Method = method,
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = body and _DIPX_HttpService:JSONEncode(body) or nil
+        })
+        if not ok or type(res) ~= "table" then return nil, res end
+        local raw = res.Body or res.body
+        if type(raw) ~= "string" then return res, nil end
+        local decoded = pcall(function() return _DIPX_HttpService:JSONDecode(raw) end)
+        if decoded then
+            local ok2, data = pcall(function() return _DIPX_HttpService:JSONDecode(raw) end)
+            if ok2 then return data, nil end
+        end
+        return res, nil
+    end
+
+    local function _dipxClearLabel(plr)
+        local gui = _DIPX_LABELS[plr]
+        if gui then pcall(function() gui:Destroy() end) end
+        _DIPX_LABELS[plr] = nil
+    end
+
+    local function _dipxShowLabel(plr)
+        if not plr or plr == _DIPX_LocalPlayer then return end
+        local char = plr.Character
+        local head = char and char:FindFirstChild("Head")
+        if not head then return end
+        local old = head:FindFirstChild("DIPXUserLabel")
+        if old then _DIPX_LABELS[plr] = old return end
+
+        local bill = Instance.new("BillboardGui")
+        bill.Name = "DIPXUserLabel"
+        bill.Adornee = head
+        bill.Size = UDim2.fromOffset(150, 32)
+        bill.StudsOffset = Vector3.new(0, 3.1, 0)
+        bill.AlwaysOnTop = true
+        bill.MaxDistance = 250
+        bill.Parent = head
+
+        local text = Instance.new("TextLabel")
+        text.BackgroundTransparency = 1
+        text.Size = UDim2.fromScale(1, 1)
+        text.Font = Enum.Font.GothamBold
+        text.Text = "DIPX USER"
+        text.TextSize = 14
+        text.TextColor3 = Color3.fromRGB(40, 150, 255)
+        text.TextStrokeTransparency = 0.35
+        text.Parent = bill
+
+        _DIPX_LABELS[plr] = bill
+    end
+
+    local function _dipxClearAll()
+        for plr, gui in pairs(_DIPX_LABELS) do
+            pcall(function() gui:Destroy() end)
+            _DIPX_LABELS[plr] = nil
+        end
+    end
+
+    local function _dipxPresence(active)
+        if not _DIPX_PRESENCE_API or _DIPX_PRESENCE_API == "" then return end
+        local payload = {
+            userId = _DIPX_LocalPlayer.UserId,
+            username = _DIPX_LocalPlayer.Name,
+            jobId = game.JobId,
+            placeId = game.PlaceId,
+            active = active == true
+        }
+        _dipxRequest("POST", _DIPX_PRESENCE_API .. "/presence", payload)
+    end
+
+    local function _dipxPoll()
+        if not _DIPX_SHARED_ENABLED then return end
+        if game.JobId == "" then return end
+        local url = _DIPX_PRESENCE_API .. "/presence?jobId=" .. tostring(game.JobId):gsub("[^%w%-%._~]", function(c)
+            return string.format("%%%02X", string.byte(c))
+        end)
+        local data = _dipxRequest("GET", url)
+        if type(data) ~= "table" or type(data.users) ~= "table" then return end
+
+        local seen = {}
+        for _, user in ipairs(data.users) do
+            local uid = tonumber(user.userId)
+            local plr = uid and _DIPX_Players:GetPlayerByUserId(uid)
+            if plr and plr ~= _DIPX_LocalPlayer then
+                seen[plr] = true
+                _dipxShowLabel(plr)
+            end
+        end
+        for plr in pairs(_DIPX_LABELS) do
+            if not seen[plr] then _dipxClearLabel(plr) end
+        end
+    end
+
+    local function _dipxSetEnabled(v)
+        -- Automatic mode: shared-user detection is always enabled.
+        _DIPX_SHARED_ENABLED = true
+        _G.DIPXSharedUsersEnabled = true
+        _dipxPresence(true)
+        task.spawn(_dipxPoll)
+    end
+
+    _G.DIPXSharedUsersSetEnabled = _dipxSetEnabled
+
+    _DIPX_Players.PlayerRemoving:Connect(function(plr)
+        _dipxClearLabel(plr)
+    end)
+
+    _DIPX_Players.PlayerAdded:Connect(function(plr)
+        plr.CharacterAdded:Connect(function()
+            if _DIPX_SHARED_ENABLED then task.wait(0.5); _dipxPoll() end
+        end)
+    end)
+
+    task.spawn(function()
+        while _DIPX_RUNNING do
+            task.wait(_DIPX_HEARTBEAT)
+            if _DIPX_SHARED_ENABLED then
+                _dipxPresence(true)
+                _dipxPoll()
+            end
+        end
+    end)
+
+    -- DIPX shared users are automatic; no Settings toggle is required.
+    task.spawn(function()
+        task.wait(1)
+        _dipxSetEnabled(true)
+    end)
+
 end
