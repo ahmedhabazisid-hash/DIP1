@@ -6335,6 +6335,26 @@ local function vZeroTP(hrp)
         hrp.AssemblyAngularVelocity = Vector3.zero
     end)
 end
+
+-- Upper-floor TP safety: temporarily remove character collision while crossing
+-- the building, then restore every part exactly as it was. This prevents the
+-- velocity-based lift from getting stuck on ceilings/walls between floors.
+local function withTPNoClip(char, fn)
+    if not char then return false end
+    local saved = {}
+    for _, obj in ipairs(char:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            saved[obj] = obj.CanCollide
+            pcall(function() obj.CanCollide = false end)
+        end
+    end
+    local ok, result = pcall(fn)
+    for obj, old in pairs(saved) do
+        if obj and obj.Parent then pcall(function() obj.CanCollide = old end) end
+    end
+    return ok, result
+end
+
 local function velMoveSpeedTP(hrp, waypoints, finalLookDir, customSpeed)
     if not hrp or not hrp.Parent or #waypoints == 0 then return end
     local wpIdx = 1
@@ -6629,10 +6649,25 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
         if _G.LiftPlatePart and hrp and hrp.Parent then
             local plateTop = _G.LiftPlatePart.Position.Y + (_G.LiftPlatePart.Size.Y / 2) + 2.5
             local platePos = Vector3.new(petPos.X, plateTop, petPos.Z)
-            -- Use the controlled movement routine on both floors 2 and 3.
-            -- Avoid direct CFrame placement here because it can cause the upper-floor
-            -- TP to clip/glitch against the lift/house collision.
-            velMoveSpeedTP(hrp, { platePos }, look, sClose())
+
+            -- Floors 2/3: rise first, then cross, then settle onto the target.
+            -- Character collision is disabled only for this short movement so
+            -- ceilings/walls cannot stall the TP midway through another floor.
+            local ok = withTPNoClip(LP.Character, function()
+                local cur = hrp.Position
+                local liftY = math.max(cur.Y + 12, plateTop + 8)
+                local liftPos = Vector3.new(cur.X, liftY, cur.Z)
+                local crossPos = Vector3.new(platePos.X, liftY, platePos.Z)
+
+                vZeroTP(hrp)
+                velMoveSpeedTP(hrp, { liftPos, crossPos, platePos }, look, math.max(sClose(), 140))
+                vZeroTP(hrp)
+            end)
+            if not ok then
+                say("in-base: upper-floor movement error")
+                disableAntiDie()
+                return false
+            end
             vZeroTP(hrp)
         else
             say("in-base: no lift plate -> fallback")
