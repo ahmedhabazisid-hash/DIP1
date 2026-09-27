@@ -6612,13 +6612,16 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
         char = LP.Character
         hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then
-            -- Higher floors: keep the Grapple Hook equipped, but do NOT fire/use it again
-            -- after reaching the house. A second grapple use here can make the TP stall.
+            -- Higher floors: equip and use the Grapple only for the travel/lift.
+            -- Once the house is reached it is equipped again without activating it.
             EquipToolIB("Grapple Hook")
             vZeroTP(hrp)
         end
+        -- The grapple is still needed to perform the actual upper-floor approach.
+        -- It is NOT fired again after arrival.
+        shootGrapple()
         local plateWait = 0
-        while not _G.LiftPlatePart and plateWait < 120 do
+        while not _G.LiftPlatePart and plateWait < 400 do
             if stopped() then disableAntiDie() return false end
             task.wait()
             plateWait = plateWait + 1
@@ -6626,28 +6629,15 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
         if _G.LiftPlatePart and hrp and hrp.Parent then
             local plateTop = _G.LiftPlatePart.Position.Y + (_G.LiftPlatePart.Size.Y / 2) + 2.5
             local platePos = Vector3.new(petPos.X, plateTop, petPos.Z)
-            -- Floors 2/3: direct placement is much faster and avoids the
-            -- heartbeat movement loop getting stuck near the lift/edge.
-            if fl >= 2 and _G.MeerkoFastHigherFloors ~= false then
-                vZeroTP(hrp)
-                pcall(function() hrp.CFrame = CFrame.new(platePos, platePos + look) end)
-                vZeroTP(hrp)
-            else
-                velMoveSpeedTP(hrp, { platePos }, look, sClose())
-                vZeroTP(hrp)
-            end
+            -- Use the controlled movement routine on both floors 2 and 3.
+            -- Avoid direct CFrame placement here because it can cause the upper-floor
+            -- TP to clip/glitch against the lift/house collision.
+            velMoveSpeedTP(hrp, { platePos }, look, sClose())
+            vZeroTP(hrp)
         else
-            -- Fast fallback for floors 2/3 if the lift plate was not created yet.
-            if fl >= 2 and hrp and hrp.Parent then
-                local fallbackPos = Vector3.new(petPos.X, petPos.Y + firstFloorLift() + 2.5, petPos.Z)
-                vZeroTP(hrp)
-                pcall(function() hrp.CFrame = CFrame.new(fallbackPos, fallbackPos + look) end)
-                vZeroTP(hrp)
-            else
-                say("in-base: no lift plate -> fallback")
-                disableAntiDie()
-                return false
-            end
+            say("in-base: no lift plate -> fallback")
+            disableAntiDie()
+            return false
         end
     end
 
