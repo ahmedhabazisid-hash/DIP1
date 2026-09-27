@@ -6650,17 +6650,43 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
             local plateTop = _G.LiftPlatePart.Position.Y + (_G.LiftPlatePart.Size.Y / 2) + 2.5
             local platePos = Vector3.new(petPos.X, plateTop, petPos.Z)
 
-            -- Floors 2/3: rise first, then cross, then settle onto the target.
-            -- Character collision is disabled only for this short movement so
-            -- ceilings/walls cannot stall the TP midway through another floor.
+            -- Floors 2/3: FORCE a visible vertical lift first, then cross to
+            -- the target floor, then settle. The old velocity-only approach
+            -- could finish/timeout before the character visibly rose.
             local ok = withTPNoClip(LP.Character, function()
                 local cur = hrp.Position
-                local liftY = math.max(cur.Y + 12, plateTop + 8)
+                local liftY = math.max(cur.Y + 14, plateTop + 10)
                 local liftPos = Vector3.new(cur.X, liftY, cur.Z)
                 local crossPos = Vector3.new(platePos.X, liftY, platePos.Z)
 
+                -- Stage 1: guaranteed vertical rise before ANY target teleport.
                 vZeroTP(hrp)
-                velMoveSpeedTP(hrp, { liftPos, crossPos, platePos }, look, math.max(sClose(), 140))
+                local riseStart = hrp.Position
+                local _, riseYaw = hrp.CFrame:ToEulerAnglesYXZ()
+                local riseDuration = 0.55
+                local riseT = 0
+                while riseT < riseDuration and hrp and hrp.Parent do
+                    if stopped() then return end
+                    riseT = riseT + RunService.Heartbeat:Wait()
+                    local a = math.clamp(riseT / riseDuration, 0, 1)
+                    local y = riseStart.Y + (liftY - riseStart.Y) * a
+                    pcall(function()
+                        hrp.CFrame = CFrame.new(riseStart.X, y, riseStart.Z) * CFrame.Angles(0, riseYaw, 0)
+                    end)
+                end
+                vZeroTP(hrp)
+
+                -- Stage 2: move above the target house while already elevated.
+                pcall(function()
+                    hrp.CFrame = CFrame.new(crossPos, crossPos + look)
+                end)
+                vZeroTP(hrp)
+                task.wait(0.12)
+
+                -- Stage 3: descend to the target floor.
+                pcall(function()
+                    hrp.CFrame = CFrame.new(platePos, platePos + look)
+                end)
                 vZeroTP(hrp)
             end)
             if not ok then
