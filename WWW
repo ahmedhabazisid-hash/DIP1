@@ -1,3 +1,5 @@
+```
+
 -- ============================================================
 -- XRAY BASES - integrated into DIPX MISC
 -- ============================================================
@@ -537,7 +539,7 @@ end
                 if ok("landing delay") then slider("LANDING DELAY","LandingDelay",0.05,0.75,0.05) end
                 if ok("100 studs base speed") then slider("100 STUDS BASE SPEED","MeerkoCloseSpeed",20,1000,5) end
                 if ok("cframe speed") then slider("CFRAME SPEED","MeerkoCFrameSpeed",100,900,5) end
-                if ok("walk speed") then slider("WALK SPEED VALUE","MeerkoWalkSpeed",16,29,1) end
+                if ok("walk speed") then slider("WALK SPEED VALUE","MeerkoWalkSpeed",16,20,1) end
                 action("OPEN TP BIND SETTINGS",function() tab="UI";state.tab="UI";saveState();renderPage() end,"Keybind / side TP options are in UI tab and original panel.")
             elseif tab=="TARGETS" then
                 makeTitle("TARGETS","Choose the target mode and optional auto-buy settings.")
@@ -1420,7 +1422,7 @@ do
     if type(merged.tpVelocity) == "number" then _G.TPVelocity = math.clamp(merged.tpVelocity, 200, 750) end
     if type(merged.climbSpeed) == "number" then _G.MeerkoClimb = math.clamp(merged.climbSpeed, 100, 250) end
     if type(merged.cframeSpeed) == "number" then _G.MeerkoCFrameSpeed = math.clamp(merged.cframeSpeed, 100, 900) end
-    if type(merged.walkSpeed) == "number" then _G.MeerkoWalkSpeed = math.clamp(merged.walkSpeed, 16, 29) end
+    if type(merged.walkSpeed) == "number" then _G.MeerkoWalkSpeed = math.clamp(merged.walkSpeed, 16, 20) end
     if type(merged.carpetTool) == "string" then _G.MeerkoCarpetTool = merged.carpetTool end
     if type(merged.landingDelay) == "number" then _G.LandingDelay = math.clamp(merged.landingDelay, 0.05, 0.75) end
     if type(merged.closeSpeed) == "number" then _G.MeerkoCloseSpeed = math.clamp(merged.closeSpeed, 20, 1000) end
@@ -7656,7 +7658,7 @@ do
         t.climbSpeed = tonumber(_G.MeerkoClimb) or 160
         t.goSpeed = tonumber(_G.MeerkoGoSpeed) or 200
         t.cframeSpeed = tonumber(_G.MeerkoCFrameSpeed) or 450
-        t.walkSpeed = tonumber(_G.MeerkoWalkSpeed) or 25
+        t.walkSpeed = tonumber(_G.MeerkoWalkSpeed) or 20
         t.landingDelay = tonumber(_G.LandingDelay) or 0.1
         t.closeSpeed = tonumber(_G.MeerkoCloseSpeed) or 80
         t.autoTp = _G.MeerkoAutoTP ~= false
@@ -7795,7 +7797,7 @@ do
     if _G.MeerkoClimb == nil then _G.MeerkoClimb = 160 end
     if _G.MeerkoGoSpeed == nil then _G.MeerkoGoSpeed = 200 end
     if _G.MeerkoCFrameSpeed == nil then _G.MeerkoCFrameSpeed = 450 end
-    if _G.MeerkoWalkSpeed == nil then _G.MeerkoWalkSpeed = 25 end
+    if _G.MeerkoWalkSpeed == nil then _G.MeerkoWalkSpeed = 20 end
     if _G.LandingDelay == nil then _G.LandingDelay = 0.1 end
     if _G.MeerkoCloseSpeed == nil then _G.MeerkoCloseSpeed = 80 end
     if _G.MeerkoInvisDepth == nil then _G.MeerkoInvisDepth = 4.2 end
@@ -8846,8 +8848,8 @@ _G.MeerkoLate("EXTRAS", function()
     end
     _G.MeerkoSetFPSBoost = setFPSBoost
 
-    local WS_SPEEDS = { 25, 29 }
-    if _G.MeerkoWalkSpeed ~= WS_SPEEDS[1] and _G.MeerkoWalkSpeed ~= WS_SPEEDS[2] then
+    local WS_SPEEDS = { 20 }
+    if _G.MeerkoWalkSpeed ~= WS_SPEEDS[1] then
         _G.MeerkoWalkSpeed = WS_SPEEDS[1]
     end
     local _wsWanted = _G.MeerkoWalkSpeedOn == true
@@ -9134,8 +9136,7 @@ _G.MeerkoLate("EXTRAS", function()
         wsBtnPaints[#wsBtnPaints + 1] = paint
         paint()
     end
-    speedBtn(12,  330, 100, WS_SPEEDS[1])
-    speedBtn(118, 330, 100, WS_SPEEDS[2])
+    speedBtn(12, 330, 100, WS_SPEEDS[1])
     wsRepaint()
 
     local _, dmPaintLocal = row(372, "DARK MODE",
@@ -11741,3 +11742,4 @@ do
         if isOurGui(g) then task.defer(function() setupGui(g) end) end
     end)
 end
+```
