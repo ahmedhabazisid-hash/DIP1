@@ -1,5 +1,3 @@
-```
-
 -- ============================================================
 -- XRAY BASES - integrated into DIPX MISC
 -- ============================================================
@@ -11742,4 +11740,3 @@ do
         if isOurGui(g) then task.defer(function() setupGui(g) end) end
     end)
 end
-```
