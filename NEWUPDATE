@@ -1,3 +1,178 @@
+-- ============================================================
+-- XRAY BASES - integrated into DIPX MISC
+-- ============================================================
+do
+    local Players = game:GetService("Players")
+    local LP = Players.LocalPlayer
+
+    if _G.MeerkoXrayAlpha == nil then _G.MeerkoXrayAlpha = 0.9 end
+    if _G.MeerkoXray == nil then _G.MeerkoXray = true end
+
+    local FOLDERS = {
+        "Base", "PlotSign", "FriendPanel", "Cash", "Laser",
+        "Decorations", "Skin", "Unlock", "Purchases"
+    }
+
+    local orig = setmetatable({}, { __mode = "k" })
+    local conns, gen = {}, 0
+
+    local function paint(o, a)
+        if not o:IsA("BasePart") then return end
+        if orig[o] == nil then
+            orig[o] = (o.Transparency == a) and 0 or o.Transparency
+        end
+
+        local base = orig[o]
+        if base >= 1 then return end
+
+        local want = base + (1 - base) * a
+        if math.abs(o.Transparency - want) > 0.01 then
+            o.Transparency = want
+        end
+    end
+
+    local function calm()
+        while _G.MeerkoStealHold do task.wait(0.15) end
+    end
+
+    local function track(root, a, id)
+        if not root or id ~= gen then return end
+
+        paint(root, a)
+
+        local n = 0
+        for _, d in ipairs(root:GetDescendants()) do
+            if id ~= gen then return end
+            paint(d, a)
+            n = n + 1
+            if n % 250 == 0 then task.wait() end
+        end
+
+        conns[#conns + 1] = root.DescendantAdded:Connect(function(d)
+            if id == gen then paint(d, a) end
+        end)
+    end
+
+    local function doPlot(plot, a, id)
+        if not plot or id ~= gen then return end
+
+        for _, fname in ipairs(FOLDERS) do
+            if id ~= gen then return end
+            track(plot:FindFirstChild(fname), a, id)
+        end
+
+        if id ~= gen then return end
+
+        conns[#conns + 1] = plot.ChildAdded:Connect(function(c)
+            if id ~= gen then return end
+            for _, fname in ipairs(FOLDERS) do
+                if c.Name == fname then
+                    track(c, a, id)
+                    break
+                end
+            end
+        end)
+
+        local pods = plot:FindFirstChild("AnimalPodiums")
+        if not pods then return end
+
+        local function pod(pd)
+            for _, c in ipairs(pd:GetChildren()) do
+                if c.Name == "Claim" then
+                    track(c, a, id)
+                elseif c.Name == "Base" then
+                    track(c:FindFirstChild("Decorations"), a, id)
+                end
+            end
+        end
+
+        for _, pd in ipairs(pods:GetChildren()) do
+            pod(pd)
+        end
+
+        conns[#conns + 1] = pods.ChildAdded:Connect(function(pd)
+            if id ~= gen then return end
+            task.wait(0.1)
+            if id == gen then pod(pd) end
+        end)
+    end
+
+    local function stop()
+        for _, c in ipairs(conns) do
+            pcall(function() c:Disconnect() end)
+        end
+        conns, gen = {}, gen + 1
+    end
+
+    _G.MeerkoEnableXray = function()
+        stop()
+        local id = gen
+        local a = math.clamp(tonumber(_G.MeerkoXrayAlpha) or 0.9, 0, 1)
+
+        task.spawn(function()
+            while id == gen and not workspace:FindFirstChild("Plots") do
+                task.wait(0.5)
+            end
+
+            local plots = workspace:FindFirstChild("Plots")
+            if id ~= gen or not plots then return end
+
+            calm()
+
+            for _, p in ipairs(plots:GetChildren()) do
+                if id ~= gen then return end
+                pcall(doPlot, p, a, id)
+                task.wait()
+                calm()
+            end
+
+            conns[#conns + 1] = plots.ChildAdded:Connect(function(p)
+                if id ~= gen then return end
+                task.wait(0.2)
+                pcall(doPlot, p, a, id)
+            end)
+        end)
+    end
+
+    _G.MeerkoDisableXray = function()
+        stop()
+
+        local snap = orig
+        orig = setmetatable({}, { __mode = "k" })
+
+        for o, t in pairs(snap) do
+            pcall(function()
+                if o:IsA("BasePart") then
+                    o.Transparency = t
+                end
+            end)
+        end
+    end
+
+    _G.MeerkoToggleXray = function()
+        _G.MeerkoXray = not (_G.MeerkoXray ~= false)
+
+        if _G.MeerkoXray then
+            _G.MeerkoEnableXray()
+        else
+            _G.MeerkoDisableXray()
+        end
+
+        return _G.MeerkoXray
+    end
+
+    task.spawn(function()
+        if not game:IsLoaded() then
+            game.Loaded:Wait()
+        end
+
+        task.wait(tonumber(_G.MeerkoXrayDelay) or 1)
+
+        if _G.MeerkoXray ~= false then
+            _G.MeerkoEnableXray()
+        end
+    end)
+end
 
 --// DIPX UNIFIED MENU v2 - settings inside one menu + separate UI manager
  do
@@ -52,6 +227,9 @@
                 if type(d)=="table" then for k,v in pairs(d) do state[k]=v end end
             end
         end) end
+        -- Restore main-menu preferences into their globals before rendering toggles.
+        _G._DIPX_CENTER_ON_OPEN = state.centerOnOpen ~= false
+        _G._DIPX_ALLOW_MOVE = state.allowMove == true
         local function saveState()
             if not writefile then return end
             pcall(function() writefile(stateFile,HS:JSONEncode(state)) end)
@@ -359,7 +537,7 @@
                 if ok("landing delay") then slider("LANDING DELAY","LandingDelay",0.05,0.75,0.05) end
                 if ok("100 studs base speed") then slider("100 STUDS BASE SPEED","MeerkoCloseSpeed",20,1000,5) end
                 if ok("cframe speed") then slider("CFRAME SPEED","MeerkoCFrameSpeed",100,900,5) end
-                if ok("walk speed") then slider("WALK SPEED VALUE","MeerkoWalkSpeed",16,29,1) end
+                if ok("walk speed") then slider("WALK SPEED VALUE","MeerkoWalkSpeed",16,20,1) end
                 action("OPEN TP BIND SETTINGS",function() tab="UI";state.tab="UI";saveState();renderPage() end,"Keybind / side TP options are in UI tab and original panel.")
             elseif tab=="TARGETS" then
                 makeTitle("TARGETS","Choose the target mode and optional auto-buy settings.")
@@ -380,6 +558,15 @@
                 toggle("DARK MODE","MeerkoDarkMode",function(v) _G.MeerkoDarkMode=v; if _G.MeerkoSetDarkMode then pcall(_G.MeerkoSetDarkMode,v) end; saveSettings() end)
             elseif tab=="MISC" then
                 makeTitle("MISC","Protection / utility controls.")
+                toggle("XRAY BASES","MeerkoXray",function(v)
+                    _G.MeerkoXray = v
+                    if v then
+                        if _G.MeerkoEnableXray then pcall(_G.MeerkoEnableXray) end
+                    else
+                        if _G.MeerkoDisableXray then pcall(_G.MeerkoDisableXray) end
+                    end
+                    saveSettings()
+                end)
                 toggle("AUTO KICK ON STEAL","MeerkoAutoKickOnSteal")
                 toggle("ANTI FLASHER","MeerkoAntiFlasherActive",function(v)
                     local g=panel("MeerkoAntiFlasher")
@@ -1233,7 +1420,7 @@ do
     if type(merged.tpVelocity) == "number" then _G.TPVelocity = math.clamp(merged.tpVelocity, 200, 750) end
     if type(merged.climbSpeed) == "number" then _G.MeerkoClimb = math.clamp(merged.climbSpeed, 100, 250) end
     if type(merged.cframeSpeed) == "number" then _G.MeerkoCFrameSpeed = math.clamp(merged.cframeSpeed, 100, 900) end
-    if type(merged.walkSpeed) == "number" then _G.MeerkoWalkSpeed = math.clamp(merged.walkSpeed, 16, 29) end
+    if type(merged.walkSpeed) == "number" then _G.MeerkoWalkSpeed = math.clamp(merged.walkSpeed, 16, 20) end
     if type(merged.carpetTool) == "string" then _G.MeerkoCarpetTool = merged.carpetTool end
     if type(merged.landingDelay) == "number" then _G.LandingDelay = math.clamp(merged.landingDelay, 0.05, 0.75) end
     if type(merged.closeSpeed) == "number" then _G.MeerkoCloseSpeed = math.clamp(merged.closeSpeed, 20, 1000) end
@@ -1328,15 +1515,16 @@ do
     if type(merged.tgtX) == "number" then _G._meerko_tgtX = merged.tgtX end
     if type(merged.tgtY) == "number" then _G._meerko_tgtY = merged.tgtY end
     if type(merged.panelsHidden) == "boolean" then _G.MeerkoPanelsHidden = merged.panelsHidden end
+    if type(merged.antiFlasherActive) == "boolean" then _G.MeerkoAntiFlasherActive = merged.antiFlasherActive end
+    if type(merged.xray) == "boolean" then _G.MeerkoXray = merged.xray end
+    if type(merged.xrayAlpha) == "number" then _G.MeerkoXrayAlpha = math.clamp(merged.xrayAlpha, 0, 1) end
+    if type(merged.tpBindKey) == "string" then _G.MeerkoTPBindKeyName = merged.tpBindKey end
+    if type(merged.tpBindShown) == "boolean" then _G.MeerkoTPBindShown = merged.tpBindShown end
+    if type(merged.tbX) == "number" then _G._meerko_tbX = merged.tbX end
+    if type(merged.tbY) == "number" then _G._meerko_tbY = merged.tbY end
 
-    _G.MeerkoAutoTP = true
-    if writefile then
-        pcall(function()
-            local t = type(fileData) == "table" and fileData or {}
-            t.autoTp = true
-            writefile("SideTP.json", _HS:JSONEncode(t))
-        end)
-    end
+    -- IMPORTANT: never overwrite a saved value during load.
+    -- If autoTp was saved as false, keep it false.
 end
 
 local Players    = game:GetService("Players")
@@ -2507,8 +2695,18 @@ function fireGrapple()
         local hum = char:FindFirstChildOfClass("Humanoid")
         if tool and hum then pcall(function() hum:EquipTool(tool) end) end
     end
-    if not char:FindFirstChild("Grapple Hook") then return end
+    local hook = char:FindFirstChild("Grapple Hook")
+    if not hook or not hook:IsA("Tool") then return end
+    -- Use the Tool itself first (server-authoritative games may reject a raw remote call).
+    pcall(function() hook:Activate() end)
+    task.wait(0.08)
     _fireGrapple()
+    -- Some implementations need a second activation after the tool is fully equipped.
+    task.delay(0.12, function()
+        if hook.Parent == char then
+            pcall(function() hook:Activate() end)
+        end
+    end)
 end
 _G.MeerkoFireGrapple = fireGrapple
 
@@ -4180,7 +4378,7 @@ local function _vxAStar(sz, startCell, goalCell, startPos, goalPos)
         if closed[curKey] then continue end
         closed[curKey] = true
         pops += 1
-        if pops > 300000 then break end
+        if pops > 50000 then break end
 
         local cur = nodes[curKey]
         if curKey == goalKey then
@@ -5088,6 +5286,12 @@ function goToBrainrot(petPos, slot)
         hum.AutoRotate = true
         hum:ChangeState(Enum.HumanoidStateType.Running)
     end)
+
+    -- On arrival: keep Grapple Hook equipped, but do not activate/fire it again.
+    pcall(function()
+        local g = hrp.Parent and (hrp.Parent:FindFirstChild("Grapple Hook") or findGrapple())
+        if g then hum:EquipTool(g) end
+    end)
 end
 
 _Stats = game:GetService("Stats")
@@ -5264,20 +5468,13 @@ function cframeStepThrough(hrp, waypoints, stepSize)
     local _lastFire = 0
     while hrp and hrp.Parent and os.clock() < deadline do
         if _G.MeerkoTPStop then break end
-        do
-            local char = hrp.Parent
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum and char and not char:FindFirstChild("Grapple Hook") then
-                local g = findGrapple()
-                if g then pcall(function() hum:EquipTool(g) end) end
-            end
-            if os.clock() - _lastFire > 0.3 then
-                _lastFire = os.clock()
-                if char and char:FindFirstChild("Grapple Hook") then
-                    _fireGrapple()
-                end
-            end
+        local char = hrp.Parent
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and char and not char:FindFirstChild("Grapple Hook") then
+            local g = findGrapple()
+            if g then pcall(function() hum:EquipTool(g) end) end
         end
+
         local target = waypoints[wpIdx]
         local flat = Vector3.new(target.X - hrp.Position.X, 0, target.Z - hrp.Position.Z)
         local mag = flat.Magnitude
@@ -5286,6 +5483,13 @@ function cframeStepThrough(hrp, waypoints, stepSize)
             if wpIdx > #waypoints then break end
             RunService.Heartbeat:Wait()
         else
+            -- Grapple is used only while travelling, never after reaching the house.
+            if os.clock() - _lastFire > 0.3 then
+                _lastFire = os.clock()
+                if char and char:FindFirstChild("Grapple Hook") then
+                    _fireGrapple()
+                end
+            end
             local hop = math.min(stepSize, mag)
             local nextPos = hrp.Position + flat.Unit * hop
             local _, y = hrp.CFrame:ToEulerAnglesYXZ()
@@ -5296,10 +5500,12 @@ function cframeStepThrough(hrp, waypoints, stepSize)
         end
     end
     do
-        local hum = hrp and hrp.Parent and hrp.Parent:FindFirstChildOfClass("Humanoid")
-        if hum then pcall(function() hum:UnequipTools() end) end
-        task.wait(0.05)
-        equipCarpet()
+        local char = hrp and hrp.Parent
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            local g = char:FindFirstChild("Grapple Hook") or findGrapple()
+            if g then pcall(function() hum:EquipTool(g) end) end
+        end
     end
     if hrp and hrp.Parent then
         _vzL(hrp)
@@ -6406,12 +6612,13 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
         char = LP.Character
         hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then
+            -- Higher floors: keep the Grapple Hook equipped, but do NOT fire/use it again
+            -- after reaching the house. A second grapple use here can make the TP stall.
             EquipToolIB("Grapple Hook")
             vZeroTP(hrp)
         end
-        shootGrapple()
         local plateWait = 0
-        while not _G.LiftPlatePart and plateWait < 400 do
+        while not _G.LiftPlatePart and plateWait < 120 do
             if stopped() then disableAntiDie() return false end
             task.wait()
             plateWait = plateWait + 1
@@ -6419,7 +6626,9 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
         if _G.LiftPlatePart and hrp and hrp.Parent then
             local plateTop = _G.LiftPlatePart.Position.Y + (_G.LiftPlatePart.Size.Y / 2) + 2.5
             local platePos = Vector3.new(petPos.X, plateTop, petPos.Z)
-            if fl >= 3 and _G.MeerkoFastFloor3 ~= false then
+            -- Floors 2/3: direct placement is much faster and avoids the
+            -- heartbeat movement loop getting stuck near the lift/edge.
+            if fl >= 2 and _G.MeerkoFastHigherFloors ~= false then
                 vZeroTP(hrp)
                 pcall(function() hrp.CFrame = CFrame.new(platePos, platePos + look) end)
                 vZeroTP(hrp)
@@ -6428,9 +6637,17 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
                 vZeroTP(hrp)
             end
         else
-            say("in-base: no lift plate -> fallback")
-            disableAntiDie()
-            return false
+            -- Fast fallback for floors 2/3 if the lift plate was not created yet.
+            if fl >= 2 and hrp and hrp.Parent then
+                local fallbackPos = Vector3.new(petPos.X, petPos.Y + firstFloorLift() + 2.5, petPos.Z)
+                vZeroTP(hrp)
+                pcall(function() hrp.CFrame = CFrame.new(fallbackPos, fallbackPos + look) end)
+                vZeroTP(hrp)
+            else
+                say("in-base: no lift plate -> fallback")
+                disableAntiDie()
+                return false
+            end
         end
     end
 
@@ -6463,10 +6680,10 @@ task.spawn(function() pcall(loadModules) pcall(loadNet) end)
 _G.MeerkoChannelsReady = false
 
 task.spawn(function()
-    task.wait(3)
+    task.wait(0.5)
     if _G.MeerkoAutoTP ~= false then
         local _loadStart = os.clock()
-        local _loadMax = 15  -- Try for up to 15 seconds during loading
+        local _loadMax = 5  -- Short startup probe; normal scanner continues below
 
         _G.MeerkoStealSay("Early TP phase starting during load...")
 
@@ -6493,13 +6710,13 @@ task.spawn(function()
                 break
             end
 
-            task.wait(0.1)  -- Fast scan during loading
+            task.wait(0.05)  -- Fast scan during loading
         end
     end
 end)
 
 task.spawn(function()
-    task.wait(3)
+    task.wait(0.5)
     local char = LP.Character or LP.CharacterAdded:Wait()
 
     local hrpReady, humReady = false, false
@@ -6547,7 +6764,7 @@ task.spawn(function()
 
     if _G.MeerkoWaitForTools ~= false and type(_G.MeerkoToolsReady) == "function" then
         local _tt0 = os.clock()
-        local _tcap = tonumber(_G.MeerkoToolWait) or 3  -- Further reduced to 3 seconds
+        local _tcap = tonumber(_G.MeerkoToolWait) or 1.5  -- Fast startup; do not block loading
         while os.clock() - _tt0 < _tcap do
             local ok, ready = pcall(_G.MeerkoToolsReady)
             if ok and ready then break end
@@ -6570,7 +6787,7 @@ task.spawn(function()
     _warmDone = true
 
     local _w0 = os.clock()
-    local _wMax = tonumber(_G.MeerkoAutoTPWait) or 5  -- Further reduced to 5 seconds
+    local _wMax = tonumber(_G.MeerkoAutoTPWait) or 2.5  -- Short target wait
     local _found = false
     while os.clock() - _w0 < _wMax do
         if _G.MeerkoAutoTP == false then return end
@@ -6790,6 +7007,7 @@ do
         end
         stealBarSg = mk("ScreenGui", GUIHOST, {
             Name = "MeerkoStealBar", ResetOnSpawn = false,
+            Enabled = false,
             IgnoreGuiInset = true, DisplayOrder = 120,
         })
         local _bw = 220
@@ -7439,7 +7657,7 @@ do
         t.climbSpeed = tonumber(_G.MeerkoClimb) or 160
         t.goSpeed = tonumber(_G.MeerkoGoSpeed) or 200
         t.cframeSpeed = tonumber(_G.MeerkoCFrameSpeed) or 450
-        t.walkSpeed = tonumber(_G.MeerkoWalkSpeed) or 25
+        t.walkSpeed = tonumber(_G.MeerkoWalkSpeed) or 20
         t.landingDelay = tonumber(_G.LandingDelay) or 0.1
         t.closeSpeed = tonumber(_G.MeerkoCloseSpeed) or 80
         t.autoTp = _G.MeerkoAutoTP ~= false
@@ -7499,6 +7717,13 @@ do
         t.fX  = tonumber(_G._meerko_fX);  t.fY  = tonumber(_G._meerko_fY)
         t.kX  = tonumber(_G._meerko_kX);  t.kY  = tonumber(_G._meerko_kY)
         t.tgtX = tonumber(_G._meerko_tgtX); t.tgtY = tonumber(_G._meerko_tgtY)
+        t.tbX = tonumber(_G._meerko_tbX); t.tbY = tonumber(_G._meerko_tbY)
+        t.tpBindKey = type(_G.MeerkoTPBindKeyName) == "string" and _G.MeerkoTPBindKeyName or nil
+        t.tpBindShown = _G.MeerkoTPBindShown == true
+        t.carpetSpeedKey = type(_G.MeerkoCarpetSpeedKeyName) == "string" and _G.MeerkoCarpetSpeedKeyName or nil
+        t.antiFlasherActive = _G.MeerkoAntiFlasherActive == true
+        t.xray = _G.MeerkoXray == true
+        t.xrayAlpha = tonumber(_G.MeerkoXrayAlpha) or 0.9
         t.panelsHidden = _G.MeerkoPanelsHidden == true
         pcall(function() writefile(CFG_FILE, HS:JSONEncode(t)) end)
     end
@@ -7518,7 +7743,7 @@ do
         "MeerkoAntiFlash", "MeerkoFaceAway", "MeerkoFaceAwayNearest",
         "MeerkoFaceAwayDelay", "MeerkoAntiBee", "MeerkoInfJump", "MeerkoFPSBoost",
         "MeerkoFaceLockWant", "MeerkoFaceLockAuto", "MeerkoDarkMode",
-        "MeerkoPanelsHidden", "MeerkoStealMode", "MeerkoNearestKey",
+        "MeerkoPanelsHidden", "MeerkoAntiFlasherActive", "MeerkoXray", "MeerkoXrayAlpha", "MeerkoTPBindShown", "MeerkoStealMode", "MeerkoNearestKey",
         "MeerkoDropKeyName", "MeerkoResetKeyName", "MeerkoCloneKeyName",
         "MeerkoKickKeyName", "MeerkoStopTPKeyName",
     }
@@ -7534,6 +7759,8 @@ do
         out[#out + 1] = "tgtY=" .. tostring(_G._meerko_tgtY)
         out[#out + 1] = "fX=" .. tostring(_G._meerko_fX)
         out[#out + 1] = "fY=" .. tostring(_G._meerko_fY)
+        out[#out + 1] = "tbX=" .. tostring(_G._meerko_tbX)
+        out[#out + 1] = "tbY=" .. tostring(_G._meerko_tbY)
         return table.concat(out, "|")
     end
 
@@ -7569,7 +7796,7 @@ do
     if _G.MeerkoClimb == nil then _G.MeerkoClimb = 160 end
     if _G.MeerkoGoSpeed == nil then _G.MeerkoGoSpeed = 200 end
     if _G.MeerkoCFrameSpeed == nil then _G.MeerkoCFrameSpeed = 450 end
-    if _G.MeerkoWalkSpeed == nil then _G.MeerkoWalkSpeed = 25 end
+    if _G.MeerkoWalkSpeed == nil then _G.MeerkoWalkSpeed = 20 end
     if _G.LandingDelay == nil then _G.LandingDelay = 0.1 end
     if _G.MeerkoCloseSpeed == nil then _G.MeerkoCloseSpeed = 80 end
     if _G.MeerkoInvisDepth == nil then _G.MeerkoInvisDepth = 4.2 end
@@ -7586,6 +7813,7 @@ do
 
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoTP", ResetOnSpawn = false, IgnoreGuiInset = true,
+        Enabled = false,
         DisplayOrder = 999999, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
     pcall(function() sg.Parent = guiParent end)
@@ -7837,6 +8065,7 @@ _G.MeerkoLate("TARGETS", function()
 
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoTargets", ResetOnSpawn = false,
+        Enabled = false,
         IgnoreGuiInset = true, DisplayOrder = 999998,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
@@ -8618,8 +8847,8 @@ _G.MeerkoLate("EXTRAS", function()
     end
     _G.MeerkoSetFPSBoost = setFPSBoost
 
-    local WS_SPEEDS = { 25, 29 }
-    if _G.MeerkoWalkSpeed ~= WS_SPEEDS[1] and _G.MeerkoWalkSpeed ~= WS_SPEEDS[2] then
+    local WS_SPEEDS = { 20 }
+    if _G.MeerkoWalkSpeed ~= WS_SPEEDS[1] then
         _G.MeerkoWalkSpeed = WS_SPEEDS[1]
     end
     local _wsWanted = _G.MeerkoWalkSpeedOn == true
@@ -8726,7 +8955,7 @@ _G.MeerkoLate("EXTRAS", function()
         Name = "MeerkoExtras", ResetOnSpawn = false,
         IgnoreGuiInset = true, DisplayOrder = 999997,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        Enabled = true,
+        Enabled = false,
     })
     pcall(function() sg.Parent = host end)
     if not sg.Parent then
@@ -8906,8 +9135,7 @@ _G.MeerkoLate("EXTRAS", function()
         wsBtnPaints[#wsBtnPaints + 1] = paint
         paint()
     end
-    speedBtn(12,  330, 100, WS_SPEEDS[1])
-    speedBtn(118, 330, 100, WS_SPEEDS[2])
+    speedBtn(12, 330, 100, WS_SPEEDS[1])
     wsRepaint()
 
     local _, dmPaintLocal = row(372, "DARK MODE",
@@ -9111,7 +9339,7 @@ _G.MeerkoLate("VEHICLE SELECT", function()
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoVehicleSelect", ResetOnSpawn = false,
         IgnoreGuiInset = true, DisplayOrder = 999993,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Enabled = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Enabled = false,
     })
     pcall(function() sg.Parent = host end)
     if not sg.Parent then
@@ -9251,7 +9479,7 @@ _G.MeerkoLate("TP BIND", function()
         Name = "MeerkoTPBind", ResetOnSpawn = false,
         IgnoreGuiInset = true, DisplayOrder = 999995,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        Enabled = _G.MeerkoTPBindShown ~= false,
+        Enabled = false,
     })
     pcall(function() sg2.Parent = host end)
     if not sg2.Parent then
@@ -9501,6 +9729,7 @@ _G.MeerkoLate("TP SPEED", function()
     end)
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoTPSpeed", ResetOnSpawn = false,
+        Enabled = false,
         IgnoreGuiInset = true, DisplayOrder = 999996,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
@@ -9739,7 +9968,7 @@ _G.MeerkoLate("PR LIST", function()
         Name = "MeerkoPriList", ResetOnSpawn = false,
         IgnoreGuiInset = true, DisplayOrder = 999998,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        Enabled = _G.MeerkoPriListShown == true,
+        Enabled = false,
     })
     pcall(function() sg.Parent = host end)
     if not sg.Parent then
@@ -10069,6 +10298,7 @@ _G.MeerkoLate("TIMER ESP", function()
     end
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoTimerESP", ResetOnSpawn = false,
+        Enabled = false,
         IgnoreGuiInset = true, DisplayOrder = 999995,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
@@ -10566,7 +10796,7 @@ _G.MeerkoLate("INVIS", function()
         Name = "MeerkoInvis", ResetOnSpawn = false,
         IgnoreGuiInset = true, DisplayOrder = 999994,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        Enabled = true,
+        Enabled = false,
     })
     pcall(function() sg.Parent = host end)
     if not sg.Parent then
@@ -10912,6 +11142,7 @@ _G.MeerkoLate("AUTO KICK", function()
     end)
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoAutoKick", ResetOnSpawn = false,
+        Enabled = false,
         IgnoreGuiInset = true, DisplayOrder = 999993,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
@@ -11182,6 +11413,7 @@ _G.MeerkoLate("ANTIFLASHER", function()
     end)
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoAntiFlasher", ResetOnSpawn = false,
+        Enabled = false,
         IgnoreGuiInset = true, DisplayOrder = 999992,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
@@ -11369,6 +11601,7 @@ _G.MeerkoLate("PANEL HIDE", function()
     end)
     local sg = mk("ScreenGui", nil, {
         Name = "MeerkoPanelHide", ResetOnSpawn = false,
+        Enabled = false,
         IgnoreGuiInset = true, DisplayOrder = 1000000,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     })
