@@ -4,6 +4,13 @@
 do
     local Players = game:GetService("Players")
     local LP = Players.LocalPlayer
+pcall(function()
+    for _, v in ipairs(workspace:GetChildren()) do
+        if v.Name == "MeerkoHubClonePlatform" then
+            v:Destroy()
+        end
+    end
+end)
 
     if _G.MeerkoXrayAlpha == nil then _G.MeerkoXrayAlpha = 0.9 end
     if _G.MeerkoXray == nil then _G.MeerkoXray = true end
@@ -19,12 +26,10 @@ do
     local function paint(o, a)
         if not o:IsA("BasePart") then return end
         if orig[o] == nil then
-            orig[o] = (o.Transparency == a) and 0 or o.Transparency
+            orig[o] = o.Transparency
         end
-
         local base = orig[o]
-        if base >= 1 then return end
-
+        if type(base) ~= "number" or base >= 1 then return end
         local want = base + (1 - base) * a
         if math.abs(o.Transparency - want) > 0.01 then
             o.Transparency = want
@@ -142,7 +147,7 @@ do
 
         for o, t in pairs(snap) do
             pcall(function()
-                if o:IsA("BasePart") then
+                if o:IsA("BasePart") and type(t) == "number" then
                     o.Transparency = t
                 end
             end)
@@ -537,7 +542,7 @@ end
                 if ok("landing delay") then slider("LANDING DELAY","LandingDelay",0.05,0.75,0.05) end
                 if ok("100 studs base speed") then slider("100 STUDS BASE SPEED","MeerkoCloseSpeed",20,1000,5) end
                 if ok("cframe speed") then slider("CFRAME SPEED","MeerkoCFrameSpeed",100,900,5) end
-                if ok("walk speed") then slider("WALK SPEED VALUE","MeerkoWalkSpeed",16,20,1) end
+                if ok("walk speed") then slider("WALK SPEED VALUE","MeerkoWalkSpeed",16,25,1) end
                 action("OPEN TP BIND SETTINGS",function() tab="UI";state.tab="UI";saveState();renderPage() end,"Keybind / side TP options are in UI tab and original panel.")
             elseif tab=="TARGETS" then
                 makeTitle("TARGETS","Choose the target mode and optional auto-buy settings.")
@@ -1299,6 +1304,7 @@ _G.MeerkoInvisAuto = false
 _G.MeerkoAutoKickOnSteal = false
 _G.MeerkoAutoBuy = false
 if _G.MeerkoStealMode == nil then _G.MeerkoStealMode = "priority" end
+if _G.MeerkoStealArmDistance == nil then _G.MeerkoStealArmDistance = 30 end
 if _G.MeerkoAutoTP == nil then _G.MeerkoAutoTP = true end
 
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -1420,7 +1426,7 @@ do
     if type(merged.tpVelocity) == "number" then _G.TPVelocity = math.clamp(merged.tpVelocity, 200, 750) end
     if type(merged.climbSpeed) == "number" then _G.MeerkoClimb = math.clamp(merged.climbSpeed, 100, 250) end
     if type(merged.cframeSpeed) == "number" then _G.MeerkoCFrameSpeed = math.clamp(merged.cframeSpeed, 100, 900) end
-    if type(merged.walkSpeed) == "number" then _G.MeerkoWalkSpeed = math.clamp(merged.walkSpeed, 16, 20) end
+    if type(merged.walkSpeed) == "number" then _G.MeerkoWalkSpeed = math.clamp(merged.walkSpeed, 16, 25) end
     if type(merged.carpetTool) == "string" then _G.MeerkoCarpetTool = merged.carpetTool end
     if type(merged.landingDelay) == "number" then _G.LandingDelay = math.clamp(merged.landingDelay, 0.05, 0.75) end
     if type(merged.closeSpeed) == "number" then _G.MeerkoCloseSpeed = math.clamp(merged.closeSpeed, 20, 1000) end
@@ -1482,6 +1488,7 @@ do
     if type(merged.stopTpKey)       == "string"  then _G.MeerkoStopTPKeyName       = merged.stopTpKey end
     if type(merged.dropKey)         == "string"  then _G.MeerkoDropKeyName         = merged.dropKey end
     if type(merged.goSpeed)      == "number"  then _G.MeerkoGoSpeed            = math.clamp(merged.goSpeed, 80, 600) end
+    if type(merged.stealArmDistance) == "number" then _G.MeerkoStealArmDistance = math.clamp(merged.stealArmDistance, 12, 60) end
     if type(merged.kickToPS)     == "boolean" then _G.MeerkoKickToPS           = merged.kickToPS end
     if type(merged.psLink)       == "string"  then _G.MeerkoPrivateServerLink  = merged.psLink end
     if type(merged.priAlert)     == "boolean" then _G.MeerkoPriAlert           = merged.priAlert end
@@ -2672,6 +2679,9 @@ function _grappleRemoteGet()
 end
 _G.MeerkoGrappleRemote = _grappleRemoteGet
 function _fireGrapple()
+    if _G.MeerkoGrappleHoldOnly == true then
+        return false
+    end
     local fired = false
     if _grappleUseItem and _grappleUseItem.Parent then
         pcall(function() _grappleUseItem:FireServer(GRAPPLE_ARG) end); fired = true
@@ -5151,6 +5161,7 @@ end
 _G.MeerkoCarpetEngageFast = carpetEngageFast
 
 function grappleBoot()
+    _G.MeerkoGrappleHoldOnly = false
     local _t0 = os.clock()
     local cap = tonumber(_G.MeerkoBootGrappleWait) or 2
     local g = findGrapple()
@@ -5191,6 +5202,7 @@ end
 _G.MeerkoGrappleBoot = grappleBoot
 
 function goToBrainrot(petPos, slot)
+    _G.MeerkoGrappleHoldOnly = false
     if not petPos then return end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -5205,7 +5217,8 @@ function goToBrainrot(petPos, slot)
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {char}
+    local plotsFolder = workspace:FindFirstChild("Plots")
+    rayParams.FilterDescendantsInstances = plotsFolder and {char, plotsFolder} or {char}
     rayParams.IgnoreWater = true
 
     local function flat(v)
@@ -5325,7 +5338,8 @@ function goToBrainrot(petPos, slot)
         hum:ChangeState(Enum.HumanoidStateType.Running)
     end)
 
-    -- On arrival: keep Grapple Hook equipped, but do not activate/fire it again.
+    -- On arrival: keep Grapple Hook equipped, but hard-lock firing until the next TP starts.
+    _G.MeerkoGrappleHoldOnly = true
     pcall(function()
         local g = hrp.Parent and (hrp.Parent:FindFirstChild("Grapple Hook") or findGrapple())
         if g then hum:EquipTool(g) end
@@ -5522,7 +5536,7 @@ function cframeStepThrough(hrp, waypoints, stepSize)
             RunService.Heartbeat:Wait()
         else
             -- Grapple is used only while travelling, never after reaching the house.
-            if os.clock() - _lastFire > 0.3 then
+            if mag > 8 and os.clock() - _lastFire > 0.3 then
                 _lastFire = os.clock()
                 if char and char:FindFirstChild("Grapple Hook") then
                     _fireGrapple()
@@ -6209,15 +6223,10 @@ function doVelocityTP(forceGrapple)
     local _ahrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     local _clonePos = (_ahrp and _ahrp.Parent and _ahrp.Position) or destPos
 
-    local _clonePlat = Instance.new("Part")
-    _clonePlat.Name = "MeerkoHubClonePlatform"
-    _clonePlat.Size = Vector3.new(12, 1, 12)
-    _clonePlat.Position = Vector3.new(_clonePos.X, _clonePos.Y - 3, _clonePos.Z)
-    _clonePlat.Anchored = true
-    _clonePlat.CanCollide = true
-    _clonePlat.Transparency = 1
-    _clonePlat.Material = Enum.Material.SmoothPlastic
-    _clonePlat.Parent = workspace
+    -- No temporary collision platform at the destination.
+    -- It was spawning an invisible 12x12 block in front of houses and could
+    -- remain in the path long enough to interfere with later teleports.
+    local _clonePlat = nil
 
     if _ahrp and _ahrp.Parent then
         _vzL(_ahrp)
@@ -6696,32 +6705,31 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
     char = LP.Character
     hrp = char and char:FindFirstChild("HumanoidRootPart")
     if hrp then
-        if isFirstFloor then
-            EquipToolIB("Grapple Hook")
-            task.wait(0)
-            shootGrapple()
+        -- Arrival movement must stay continuous: equip the Grapple Hook only.
+        -- Do NOT fire it here and do NOT CFrame-teleport into the house.
+        EquipToolIB("Grapple Hook")
+        task.wait(0.01)
+
+        if isFirstFloor and LP:GetAttribute("Stealing") ~= true then
             local tpY = math.max(hrp.Position.Y, petPos.Y + firstFloorLift())
             local tpPos = Vector3.new(petPos.X, tpY, petPos.Z)
-            local liftPos = Vector3.new(petPos.X, math.max(hrp.Position.Y + 2.5, tpY + 2.5), petPos.Z)
-            pcall(function() hrp.CFrame = CFrame.new(liftPos, liftPos + look) end)
+
+            -- Fly/velocity approach all the way to the target instead of
+            -- snapping to the final CFrame.
             vZeroTP(hrp)
             velMoveSpeedTP(hrp, { tpPos }, look, sFly())
-        else
-            EquipToolIB("Grapple Hook")
-            task.wait(0.01)
         end
     end
 
     if not isHigher then
+        -- The velocity approach above is the complete first-floor arrival.
+        -- Only make sure the Grapple Hook remains equipped; never activate it.
         if LP:GetAttribute("Stealing") ~= true then
             char = LP.Character
             hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp then
                 EquipToolIB("Grapple Hook")
-                local tpY = math.max(hrp.Position.Y, petPos.Y + firstFloorLift())
-                local tpPos = Vector3.new(petPos.X, tpY, petPos.Z)
                 vZeroTP(hrp)
-                pcall(function() hrp.CFrame = CFrame.new(tpPos, tpPos + look) end)
             end
         end
     else
@@ -6745,7 +6753,9 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
     if hrp then vZeroTP(hrp) end
 
     -- On arrival inside the house: keep the Grapple Hook in the player's hand.
-    -- Equip only; never activate/fire it here so it cannot pull or affect the player.
+    -- Equip only; never activate/fire it here. Block every later fire until a new TP starts.
+    _G.MeerkoGrappleHoldOnly = true
+    _G.MeerkoBootGrappleOnly = true
     local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if hum then
         local g = LP.Character:FindFirstChild("Grapple Hook") or findGrapple()
@@ -6967,7 +6977,7 @@ do
     end
 
     local InternalStealCache = {}
-    local STEAL_HOLD_DURATION = 1.3
+    local STEAL_HOLD_DURATION = 0.05
     local STEAL_PROXIMITY = tonumber(_G.MeerkoStealProximity) or 33
     local _stealHoldStart, _stealHoldActive = 0, false
     local _stealTarget, _stealArmedAt = nil, 0
@@ -7190,10 +7200,10 @@ do
     local function hideStealBar()
         pcall(function()
             ensureStealBar()
-            stealBarSg.Enabled = true
             stealBarTitle.Text = "STEAL"
             stealBarPct.Text = "0%"
             _setStealFill(0)
+            stealBarSg.Enabled = false
         end)
     end
     task.defer(hideStealBar)
@@ -7308,7 +7318,7 @@ do
                 if not pos then return true end
                 return (hrp.Position - pos).Magnitude <= (tonumber(_G.MeerkoStealGrabDist) or 12)
             end
-            local DWELL = tonumber(_G.MeerkoStealDwell) or 0.3
+            local DWELL = tonumber(_G.MeerkoStealDwell) or 0
             local readyAt = nil
             local _gone = false
             while true do
@@ -7377,16 +7387,29 @@ do
         _currentCandidateIdx = 1
         _stealAttempts = 0  -- Reset attempts when building new list
 
-        local function _getPetRarity(pet)
-            if not pet.name then return 0 end
-            local name = tostring(pet.name):lower()
-            if name:find("gold") or name:find("event") or name:find("diamond") then return 100 end
-            if name:find("rainbow") or name:find("shiny") then return 90 end
-            return 50
-        end
-
+        -- Match the steal ordering to the selected mode instead of the old
+        -- name-based rarity sort.
+        local mode = tostring(_G.MeerkoStealMode or "priority"):lower()
         table.sort(pets, function(a, b)
-            return _getPetRarity(a) > _getPetRarity(b)
+            local pa, pb = tonumber(a._pri), tonumber(b._pri)
+            if mode == "priority" then
+                if (pa ~= nil) ~= (pb ~= nil) then return pa ~= nil end
+                if pa and pb and pa ~= pb then return pa < pb end
+            elseif mode == "highest" then
+                local ma, mb = tonumber(a.mps) or 0, tonumber(b.mps) or 0
+                if ma ~= mb then return ma > mb end
+            elseif mode == "nearest" then
+                local c = LP.Character
+                local h = c and c:FindFirstChild("HumanoidRootPart")
+                if h and a.position and b.position then
+                    local da = (a.position - h.Position).Magnitude
+                    local db = (b.position - h.Position).Magnitude
+                    if da ~= db then return da < db end
+                end
+            end
+            local ma, mb = tonumber(a.mps) or 0, tonumber(b.mps) or 0
+            if ma ~= mb then return ma > mb end
+            return tostring(_petUid(a)) < tostring(_petUid(b))
         end)
 
         for _, p in ipairs(pets) do
@@ -7621,34 +7644,20 @@ do
 
             local closing = dist > 0.001 and (hrp.AssemblyLinearVelocity:Dot(toPet) / dist) or 0
 
-            local _nearBase = false
-            do
-                local _bi = getClosestBaseIdx(pet.position)
-                local _b = _bi and BASES_LOW[_bi]
-                if _b then
-                    local _bx, _bz = hrp.Position.X - _b.X, hrp.Position.Z - _b.Z
-                    if math.sqrt(_bx * _bx + _bz * _bz) <= (tonumber(_G.MeerkoCloseBaseRange) or 100) then
-                        _nearBase = true
-                    end
-                end
+            -- Arm before the final prompt range. The async hold still refuses to
+            -- trigger until the real grab distance is reached.
+            local grabDist = tonumber(_G.MeerkoStealGrabDist) or 12
+            local configuredArm = math.clamp(tonumber(_G.MeerkoStealArmDistance) or 16, grabDist, 60)
+            local predictedArm = configuredArm
+            if closing > 5 then
+                predictedArm = math.max(configuredArm, math.min(60, grabDist + closing * hold * 0.85))
             end
-
-            if _nearBase then
-                if dist > (tonumber(_G.MeerkoNearBaseStealStart) or 68) then _G.MeerkoStealSay(string.format("nearbase far d=%.0f", dist)) return end
-            elseif closing > (tonumber(_G.MeerkoFastApproach) or 150) then
-
-                if dist > (tonumber(_G.MeerkoStealLeadMax) or 300) then _G.MeerkoStealSay(string.format("lead far d=%.0f", dist)) return end
-                if (dist / closing) > hold * lead then _G.MeerkoStealSay(string.format("lead wait d=%.0f c=%.0f", dist, closing)) return end
-            elseif closing > 5 then
-
-                if dist > (tonumber(_G.MeerkoCloseProximity) or 34) then _G.MeerkoStealSay(string.format("moving far d=%.0f c=%.0f", dist, closing)) return end
-            else
-
-                if dist > _prox() then _G.MeerkoStealSay(string.format("far d=%.0f", dist)) return end
+            if dist > predictedArm then
+                return
+            end
+        _fireSteal(pet)
             end
         end
-        _fireSteal(pet)
-    end
     RunService.Heartbeat:Connect(function()
         local _ok, _err = pcall(_stealTick)
         if not _ok then _G.MeerkoStealSay("ERROR " .. tostring(_err)) end
@@ -7755,7 +7764,7 @@ do
         t.climbSpeed = tonumber(_G.MeerkoClimb) or 160
         t.goSpeed = tonumber(_G.MeerkoGoSpeed) or 200
         t.cframeSpeed = tonumber(_G.MeerkoCFrameSpeed) or 450
-        t.walkSpeed = tonumber(_G.MeerkoWalkSpeed) or 20
+        t.walkSpeed = tonumber(_G.MeerkoWalkSpeed) or 25
         t.landingDelay = tonumber(_G.LandingDelay) or 0.1
         t.closeSpeed = tonumber(_G.MeerkoCloseSpeed) or 80
         t.autoTp = _G.MeerkoAutoTP ~= false
@@ -7823,6 +7832,7 @@ do
         t.xray = _G.MeerkoXray == true
         t.xrayAlpha = tonumber(_G.MeerkoXrayAlpha) or 0.9
         t.panelsHidden = _G.MeerkoPanelsHidden == true
+        t.stealArmDistance = math.clamp(tonumber(_G.MeerkoStealArmDistance) or 30, 12, 60)
         pcall(function() writefile(CFG_FILE, HS:JSONEncode(t)) end)
     end
     _G.MeerkoSaveSettings = saveTpSettings
@@ -7841,7 +7851,7 @@ do
         "MeerkoAntiFlash", "MeerkoFaceAway", "MeerkoFaceAwayNearest",
         "MeerkoFaceAwayDelay", "MeerkoAntiBee", "MeerkoInfJump", "MeerkoFPSBoost",
         "MeerkoFaceLockWant", "MeerkoFaceLockAuto", "MeerkoDarkMode",
-        "MeerkoPanelsHidden", "MeerkoAntiFlasherActive", "MeerkoXray", "MeerkoXrayAlpha", "MeerkoTPBindShown", "MeerkoStealMode", "MeerkoNearestKey",
+        "MeerkoPanelsHidden", "MeerkoAntiFlasherActive", "MeerkoXray", "MeerkoXrayAlpha", "MeerkoStealArmDistance", "MeerkoTPBindShown", "MeerkoStealMode", "MeerkoNearestKey",
         "MeerkoDropKeyName", "MeerkoResetKeyName", "MeerkoCloneKeyName",
         "MeerkoKickKeyName", "MeerkoStopTPKeyName",
     }
@@ -7894,7 +7904,7 @@ do
     if _G.MeerkoClimb == nil then _G.MeerkoClimb = 160 end
     if _G.MeerkoGoSpeed == nil then _G.MeerkoGoSpeed = 200 end
     if _G.MeerkoCFrameSpeed == nil then _G.MeerkoCFrameSpeed = 450 end
-    if _G.MeerkoWalkSpeed == nil then _G.MeerkoWalkSpeed = 20 end
+    if _G.MeerkoWalkSpeed == nil then _G.MeerkoWalkSpeed = 25 end
     if _G.LandingDelay == nil then _G.LandingDelay = 0.1 end
     if _G.MeerkoCloseSpeed == nil then _G.MeerkoCloseSpeed = 80 end
     if _G.MeerkoInvisDepth == nil then _G.MeerkoInvisDepth = 4.2 end
@@ -8943,7 +8953,7 @@ _G.MeerkoLate("EXTRAS", function()
     end
     _G.MeerkoSetFPSBoost = setFPSBoost
 
-    local WS_SPEEDS = { 20 }
+    local WS_SPEEDS = { 25 }
     if _G.MeerkoWalkSpeed ~= WS_SPEEDS[1] then
         _G.MeerkoWalkSpeed = WS_SPEEDS[1]
     end
