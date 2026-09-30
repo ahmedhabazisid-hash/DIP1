@@ -3199,8 +3199,6 @@ function scanAllPets()
         _mkSeen = _mkSeen + 1
         if isMyPlot(channel) then _G.MeerkoMyPlot = plot.Name _mkTags[#_mkTags + 1] = "MINE" continue end
         if _G.MeerkoMyPlot == plot.Name then _mkTags[#_mkTags + 1] = "MINE" continue end
-        if not _G.MeerkoMyPlot and channelGet(channel, "Owner") == nil then _mkTags[#_mkTags + 1] = "noowner?" continue end
-        if _G.MeerkoRequireOwner ~= false and not ownerInGame(channel) then _mkTags[#_mkTags + 1] = "left" continue end
         _mkUse = _mkUse + 1
 
         local animalList = channelGet(channel, "AnimalList")
@@ -3238,7 +3236,7 @@ function scanAllPets()
 
             local displayName = (animalInfo and animalInfo.DisplayName) or animalName
 
-            local pos = getPetPosition(plot, slot, (_G.MeerkoRequireOwner == false) or (_G.MeerkoRequireModel == true))
+            local pos = getPetPosition(plot, slot, false)
 
             if pos then
                 if genValue >= (tonumber(_G.MeerkoMinMPS) or 0) then
@@ -5847,17 +5845,54 @@ function doVelocityTP(forceGrapple)
         pet = _findStealTarget(allPets)
         if not pet then isTeleporting = false; return end
     else
-        local prio, best
+        -- Best-pet logic: choose the highest MPS pet from player houses first.
+        -- Conveyor/Runway pets are fallback only when no house pet exists.
+        local bestHouse
+        local bestHouseMPS = -math.huge
         for _, p in ipairs(allPets) do
-            if not p.conveyor then
-                if p._pri and (not prio or p._pri < prio._pri) then prio = p end
-                if not best or (p.mps or 0) > (best.mps or 0) then best = p end
+            if p and not p.conveyor and p.position and p.plot and p.slot ~= nil then
+                local mps = tonumber(p.mps) or 0
+                if not bestHouse or mps > bestHouseMPS then
+                    bestHouse = p
+                    bestHouseMPS = mps
+                end
             end
         end
-        pet = prio or best or allPets[1]
+        if bestHouse then
+            pet = bestHouse
+        else
+            -- No player-house pets found: use the best available runway pet.
+            local bestBelt
+            local bestBeltMPS = -math.huge
+            for _, p in ipairs(allPets) do
+                if p and p.conveyor and p.position then
+                    local mps = tonumber(p.mps) or 0
+                    if not bestBelt or mps > bestBeltMPS then
+                        bestBelt = p
+                        bestBeltMPS = mps
+                    end
+                end
+            end
+            pet = bestBelt
+        end
+        if not pet then isTeleporting = false; return end
     end
     local petPos = pet.position
     local petName = pet.name
+
+    -- Conveyor is fallback only. Use its dedicated route instead of house routing.
+    if pet.conveyor then
+        if type(_G.MeerkoConveyorTP) == "function" then
+            local ok, result = pcall(_G.MeerkoConveyorTP, pet, true)
+            if not ok or result == false then
+                isTeleporting = false
+            end
+        else
+            isTeleporting = false
+        end
+        return
+    end
+
     if _G.MeerkoArmSteal then pcall(_G.MeerkoArmSteal, pet) end
     
 
