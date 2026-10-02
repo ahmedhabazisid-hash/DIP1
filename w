@@ -1,17 +1,5 @@
+
 local SAB_LIVE = function() return true end
-
--- Delta compatibility profile:
--- Keep the main script intact, but disable executor-specific paths that are
--- commonly unavailable in lightweight executors. Normal Roblox APIs remain active.
-_G.JAF_DeltaCompat = true
-_G.JAF_NoSafeCall = true
-_G.JAF_NoSynchronizer = true
-_G.JAF_NoUpvalues = true
-_G.JAF_NoFSHook = true
-_G.JAF_ScanViaInstances = true
-_G.JAF_WaitBasesBeforeTp = false
-if _G.JAF_GrappleFireMode == nil then _G.JAF_GrappleFireMode = "remote" end
-
 local _SABCAP = {}
 if not LPH_OBFUSCATED then
     local ok, env = pcall(getfenv)
@@ -16382,7 +16370,7 @@ if not _SABCAP.JAF_InstantReset then
         local _arming = false
         _armCapture = function() LPH_ATTRIBUTES(ERROR_HANDLING(false))
         if _resetRemote or _arming then return end
-        if _G.JAF_DeltaCompat == true or not hookfunction or _G.JAF_ResetCapture == false then return end
+        if not hookfunction or _G.JAF_ResetCapture == false then return end
         _arming = true
         pcall(function() LPH_ATTRIBUTES(ERROR_HANDLING(false))
             local newcc = newcclosure or function(f) LPH_ATTRIBUTES(ERROR_HANDLING(false))
