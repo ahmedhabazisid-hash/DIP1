@@ -2745,11 +2745,6 @@ function listTools()
 end
 _lastCarpetName = nil
 function equipCarpet()
-    -- After clone/arrival, the Grapple Hook must stay in hand.
-    -- Refuse every carpet here so later Heartbeat/TP helpers cannot override it.
-    if _G.MeerkoPostCloneGrappleLock == true then
-        return nil
-    end
     local char = LP.Character
     if not char then return nil end
     if _lastCarpetName then
@@ -5074,29 +5069,6 @@ function doClone()
     end
 
     task.delay(0.55, function() _G.isCloning = false end)
-
-    -- After the clone action, keep a Grapple variant equipped and block all
-    -- carpet-equipping helpers until the next TP starts.
-    _G.MeerkoPostCloneGrappleLock = true
-    _G.MeerkoGrappleHoldOnly = true
-    _G.MeerkoBootGrappleOnly = true
-    task.spawn(function()
-        for _ = 1, 8 do
-            local c = LP.Character
-            local h = c and c:FindFirstChildOfClass("Humanoid")
-            local g = findGrapple()
-            if c and h and g then
-                pcall(function() h:EquipTool(g) end)
-                local equipped = false
-                for _, n in ipairs(GRAPPLE_NAMES) do
-                    local t = c:FindFirstChild(n)
-                    if t and t:IsA("Tool") then equipped = true break end
-                end
-                if equipped then break end
-            end
-            RunService.Heartbeat:Wait()
-        end
-    end)
     return fired
 end
 
@@ -5239,7 +5211,6 @@ end
 _G.MeerkoGrappleBoot = grappleBoot
 
 function goToBrainrot(petPos, slot)
-    _G.MeerkoPostCloneGrappleLock = false
     _G.MeerkoGrappleHoldOnly = false
     if not petPos then return end
     local char = LP.Character
@@ -5785,8 +5756,6 @@ _G.MeerkoWaitTPTarget = _waitTPTarget
 
 _tpArming = false
 function doVelocityTP(forceGrapple)
-    -- A new TP is allowed to use the carpet again.
-    _G.MeerkoPostCloneGrappleLock = false
     if isTeleporting then return end
     if LP:GetAttribute("Stealing") == true then return end
     isTeleporting = true
@@ -6471,16 +6440,6 @@ local function EquipToolIB(name)
     if tool and tool:IsA("Tool") then pcall(function() hum:EquipTool(tool) end) end
 end
 
-local function EquipAnyGrappleIB()
-    local char = LP.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not char or not hum then return false end
-    local g = findGrapple()
-    if not g or not g:IsA("Tool") then return false end
-    pcall(function() hum:EquipTool(g) end)
-    return true
-end
-
 local function vZeroTP(hrp)
     if not hrp then return end
     pcall(function()
@@ -6800,15 +6759,17 @@ _G.MeerkoInBaseApproach = function(petPos, slot, facingDir)
     hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if hrp then vZeroTP(hrp) end
 
-    -- On arrival after clone: keep ANY available Grapple variant in the player's hand.
-    -- Also hard-lock carpet equipping so a later helper cannot switch to any carpet.
-    _G.MeerkoPostCloneGrappleLock = true
+    -- On arrival inside the house: keep the Grapple Hook in the player's hand.
+    -- Equip only; never activate/fire it here. Block every later fire until a new TP starts.
     _G.MeerkoGrappleHoldOnly = true
     _G.MeerkoBootGrappleOnly = true
-    EquipAnyGrappleIB()
-    task.wait(0.02)
-    -- Re-check once because the tool can move from Backpack -> Character one frame later.
-    EquipAnyGrappleIB()
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        local g = LP.Character:FindFirstChild("Grapple Hook") or findGrapple()
+        if g then
+            pcall(function() hum:EquipTool(g) end)
+        end
+    end
     disableAntiDie()
     say(string.format("in-base done floor=%d slot=%s", fl, tostring(slot)))
     return true
