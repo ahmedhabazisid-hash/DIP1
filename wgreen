@@ -5068,13 +5068,17 @@ function doClone()
     local fired = false
     if tb and type(firesignal) == "function" then
         pcall(function() tb.Visible = true end)
-        -- Fire the button once. Multiple GUI signals in the old version could
-        -- toggle the cloner state twice and cancel the intended teleport.
-        local ok = pcall(function() firesignal(tb.Activated) end)
-        if not ok then
-            ok = pcall(function() firesignal(tb.MouseButton1Click) end)
-        end
-        fired = ok
+        pcall(function() tb.Active = true end)
+        -- This is the actual "TeleportToClone" click. Some versions of the
+        -- UI listen to MouseButton1Click, while others listen to Activated.
+        -- Send the click signals in the same order as a real button press,
+        -- with a tiny gap so the game receives the teleport request.
+        local ok1 = pcall(function() firesignal(tb.MouseButton1Click) end)
+        task.wait(0.03)
+        local ok2 = pcall(function() firesignal(tb.MouseButton1Up) end)
+        task.wait(0.03)
+        local ok3 = pcall(function() firesignal(tb.Activated) end)
+        fired = ok1 or ok2 or ok3
     else
         -- Only use the remote fallback when the actual GUI button was not
         -- available after the activation/wait window.
@@ -5101,7 +5105,7 @@ function doClone()
                 break
             end
             RunService.Heartbeat:Wait()
-        until os.clock() - _cloneStart >= 0.45
+        until os.clock() - _cloneStart >= 1.0
     end
 
     task.delay(0.55, function() _G.isCloning = false end)
